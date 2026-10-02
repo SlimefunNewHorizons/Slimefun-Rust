@@ -219,3 +219,11 @@ cargo build --release --workspace
 **DrakesCraft Labs** · Desarrollado por [**JackStar6677-1**](https://github.com/JackStar6677-1)
 
 </div>
+
+---
+
+## 📄 License & Intellectual Property
+
+Copyright © 2026 [**JackStar6677-1**](https://github.com/JackStar6677-1) · [**DrakesCraft Labs**](https://github.com/DrakesCraft-Labs). All Rights Reserved.
+
+This software is **Source-Available** for public inspection and technical audit. Redistribution, commercial repackaging, or unauthorized derivative distribution without explicit written permission from the author is strictly prohibited.
