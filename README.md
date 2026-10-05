@@ -1,13 +1,13 @@
 <div align="center">
 
-  <img src="https://raw.githubusercontent.com/DrakesCraft-Labs/Slimefun-Rust/main/slimefun_rust_banner.svg" alt="Slimefun-Rust Banner" width="920" />
+  <img src="https://raw.githubusercontent.com/SlimefunNewHorizons/Slimefun-Rust/main/slimefun_rust_banner.svg" alt="Slimefun-Rust Banner" width="920" />
 
 # Slimefun-Rust Engine
 
 **Native acceleration core for Slimefun and the DrakesCraft plugin ecosystem.**
 
 <p>
-  <a href="https://github.com/DrakesCraft-Labs/Slimefun-Rust"><img src="https://img.shields.io/badge/GitHub-Slimefun--Rust-181717?style=for-the-badge&logo=github" alt="GitHub"/></a>
+  <a href="https://github.com/SlimefunNewHorizons/Slimefun-Rust"><img src="https://img.shields.io/badge/GitHub-Slimefun--Rust-181717?style=for-the-badge&logo=github" alt="GitHub"/></a>
   <img src="https://img.shields.io/badge/Rust-2021_Workspace-FF4500?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 2021"/>
   <img src="https://img.shields.io/badge/Java-21_FFM_Panama-F89820?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21 FFM"/>
   <img src="https://img.shields.io/badge/Purpur-1.21.11-00FF66?style=for-the-badge&logo=minecraft&logoColor=white" alt="Purpur 1.21.11"/>
@@ -224,6 +224,6 @@ cargo build --release --workspace
 
 ## 📄 License & Intellectual Property
 
-Copyright © 2026 [**JackStar6677-1**](https://github.com/JackStar6677-1) · [**DrakesCraft Labs**](https://github.com/DrakesCraft-Labs). All Rights Reserved.
+Copyright © 2026 [**JackStar6677-1**](https://github.com/JackStar6677-1) · [**DrakesCraft Labs**](https://github.com/SlimefunNewHorizons). All Rights Reserved.
 
 This software is **Source-Available** for public inspection and technical audit. Redistribution, commercial repackaging, or unauthorized derivative distribution without explicit written permission from the author is strictly prohibited.
