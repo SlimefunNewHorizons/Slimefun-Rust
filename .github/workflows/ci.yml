@@ -39,3 +39,10 @@ jobs:
           path: |
             target/release/slimefun-server
             target/release/libslimefun_ffi.so
+
+  seguridad:
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    uses: SlimefunNewHorizons/.github/.github/workflows/seguridad.yml@main
