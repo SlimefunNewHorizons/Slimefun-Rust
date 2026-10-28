@@ -1,0 +1,40 @@
+    Finished `release` profile [optimized] target(s) in 0.05s
+Note: bench/java/Bench.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+ABI=2 java=21.0.12.1
+sum Java viejo (copyOf)            n=2            15,6 ns/op      24,0 B/op
+sum Java sin alloc                 n=2             8,9 ns/op       0,0 B/op
+sum Rust JNI critical              n=2            52,0 ns/op       0,0 B/op
+fill Java (+reset)                 n=2            17,5 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=2           199,4 ns/op       0,0 B/op
+
+sum Java viejo (copyOf)            n=16           42,2 ns/op      80,0 B/op
+sum Java sin alloc                 n=16           14,2 ns/op       0,0 B/op
+sum Rust JNI critical              n=16           56,4 ns/op       0,0 B/op
+fill Java (+reset)                 n=16           27,0 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=16          180,1 ns/op       0,0 B/op
+
+sum Java viejo (copyOf)            n=128         235,7 ns/op     528,0 B/op
+sum Java sin alloc                 n=128          98,0 ns/op       0,0 B/op
+sum Rust JNI critical              n=128         167,2 ns/op       0,0 B/op
+fill Java (+reset)                 n=128         153,0 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=128         298,7 ns/op       0,0 B/op
+
+sum Java viejo (copyOf)            n=1024        982,9 ns/op    4112,0 B/op
+sum Java sin alloc                 n=1024        832,3 ns/op       0,0 B/op
+sum Rust JNI critical              n=1024       1048,0 ns/op       0,0 B/op
+fill Java (+reset)                 n=1024       1175,8 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=1024       1311,6 ns/op       0,0 B/op
+
+sum Java viejo (copyOf)            n=8192      11192,0 ns/op   32784,0 B/op
+sum Java sin alloc                 n=8192       6591,8 ns/op       0,0 B/op
+sum Rust JNI critical              n=8192       8992,8 ns/op       0,0 B/op
+fill Java (+reset)                 n=8192      12944,3 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=8192      10444,4 ns/op       0,0 B/op
+
+sum Java viejo (copyOf)            n=65536     93792,1 ns/op  262160,0 B/op
+sum Java sin alloc                 n=65536     52637,0 ns/op       0,0 B/op
+sum Rust JNI critical              n=65536     71490,7 ns/op       0,0 B/op
+fill Java (+reset)                 n=65536     81702,8 ns/op       0,0 B/op
+fill Rust JNI (+reset)             n=65536     82808,0 ns/op       0,0 B/op
+

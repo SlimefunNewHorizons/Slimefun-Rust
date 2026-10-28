@@ -1,8 +1,10 @@
-use jni::objects::{JClass, JIntArray};
+use jni::objects::{JClass, JIntArray, ReleaseMode};
 use jni::sys::{jdouble, jint, jlong};
 use jni::JNIEnv;
 use slimefun_core::{BlockStorageEngine, TickerEngine};
-use slimefun_energy::{EnergyNetGraphSolver, EnergyReport};
+use slimefun_energy::{
+    fill_sequential, store_remaining, sum_saturating, EnergyNetGraphSolver, EnergyReport,
+};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::{OnceLock, RwLock};
@@ -11,7 +13,17 @@ static STORAGE_ENGINE: OnceLock<BlockStorageEngine> = OnceLock::new();
 static ENERGY_SOLVER: OnceLock<EnergyNetGraphSolver> = OnceLock::new();
 static TICKER_ENGINE: OnceLock<TickerEngine> = OnceLock::new();
 static ULTIMO_REPORTE: OnceLock<RwLock<EnergyReport>> = OnceLock::new();
-const ABI_VERSION: i32 = 1;
+/// ABI 1: sumSaturating + calculateMarketPrice. ABI 2: anade fillSequential/storeRemaining por
+/// lotes, acceso a arrays sin copia (critical) y todos los puntos de entrada blindados contra
+/// panics. Java acepta 1 (solo funciones v1) y 2.
+const ABI_VERSION: i32 = 2;
+/// Codigo devuelto cuando algo falla dentro de Rust (panic, array invalido, longitudes distintas).
+const ERR: i32 = i32::MIN;
+
+/// Ejecuta `f` sin dejar que un panic cruce la frontera FFI (UB). Devuelve `fallback` si panica.
+fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or(fallback)
+}
 
 fn get_storage() -> &'static BlockStorageEngine {
     STORAGE_ENGINE.get_or_init(BlockStorageEngine::new)
@@ -116,8 +128,10 @@ pub extern "C" fn slimefun_sum_saturating(values: *const i32, length: usize) -> 
         return 0;
     }
 
-    let slice = unsafe { std::slice::from_raw_parts(values, length) };
-    sum_saturating(slice)
+    guard(0, || {
+        let slice = unsafe { std::slice::from_raw_parts(values, length) };
+        sum_saturating(slice)
+    })
 }
 
 #[no_mangle]
@@ -128,44 +142,136 @@ pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nat
     ABI_VERSION
 }
 
+/// Suma sin copiar ni asignar: lee el array de Java en sitio (critical, sin copia de vuelta).
+fn jni_sum(env: &mut JNIEnv, values: &JIntArray) -> jint {
+    guard(0, || {
+        // SAFETY: dentro de la seccion critica solo se lee el slice; no se llama a JNI.
+        match unsafe { env.get_array_elements_critical(values, ReleaseMode::NoCopyBack) } {
+            Ok(elems) => sum_saturating(&elems),
+            Err(_) => 0,
+        }
+    })
+}
+
+/// Reparto por lotes (ABI 2). `charge` se modifica en sitio; `out2[0]` = energia restante,
+/// `out2[1]` = demanda. Devuelve 0 si fue bien o `ERR`. Sin asignaciones en el camino.
+#[no_mangle]
+pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nativeengine_RustNativeEngine_nativeFillSequential(
+    mut env: JNIEnv,
+    _class: JClass,
+    supply: jint,
+    capacity: JIntArray,
+    charge: JIntArray,
+    out2: JIntArray,
+) -> jint {
+    guard(ERR, || {
+        let (Ok(n), Ok(m), Ok(o)) = (
+            env.get_array_length(&capacity),
+            env.get_array_length(&charge),
+            env.get_array_length(&out2),
+        ) else {
+            return ERR;
+        };
+        if n != m || o < 2 {
+            return ERR;
+        }
+        // SAFETY: tres arrays distintos de Java, sin llamadas JNI dentro de las secciones.
+        let (rest, dem) = unsafe {
+            let mut env2 = env.unsafe_clone();
+            let Ok(cap) = env.get_array_elements_critical(&capacity, ReleaseMode::NoCopyBack)
+            else {
+                return ERR;
+            };
+            let Ok(mut ch) = env2.get_array_elements_critical(&charge, ReleaseMode::CopyBack)
+            else {
+                return ERR;
+            };
+            fill_sequential(supply, &cap, &mut ch)
+        };
+        let _ = env.set_int_array_region(&out2, 0, &[rest, dem]);
+        0
+    })
+}
+
+/// Variante de `storeRemainingEnergy`; `out` recibe las cargas, devuelve lo que no cupo
+/// o `ERR` si falla (no hay ambiguedad: lo que no cabe nunca es negativo).
+#[no_mangle]
+pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nativeengine_RustNativeEngine_nativeStoreRemaining(
+    mut env: JNIEnv,
+    _class: JClass,
+    remaining: jint,
+    capacity: JIntArray,
+    out: JIntArray,
+) -> jint {
+    guard(ERR, || {
+        let (Ok(n), Ok(m)) = (env.get_array_length(&capacity), env.get_array_length(&out)) else {
+            return ERR;
+        };
+        if n != m {
+            return ERR;
+        }
+        // SAFETY: igual que arriba.
+        unsafe {
+            let mut env2 = env.unsafe_clone();
+            let Ok(cap) = env.get_array_elements_critical(&capacity, ReleaseMode::NoCopyBack)
+            else {
+                return ERR;
+            };
+            let Ok(mut o) = env2.get_array_elements_critical(&out, ReleaseMode::CopyBack) else {
+                return ERR;
+            };
+            store_remaining(remaining, &cap, &mut o)
+        }
+    })
+}
+
+/// Version de ABI para carga por Panama/FFM (sin JNI).
+#[no_mangle]
+pub extern "C" fn slimefun_abi_version() -> i32 {
+    ABI_VERSION
+}
+
+/// Reparto por lotes via C ABI (Panama). Mismos semantica y codigos que la variante JNI.
+///
+/// # Safety
+/// `capacity` y `charge` deben apuntar a `len` i32 validos; `out2` a 2 i32 escribibles.
+#[no_mangle]
+pub unsafe extern "C" fn slimefun_fill_sequential(
+    supply: i32,
+    capacity: *const i32,
+    charge: *mut i32,
+    len: usize,
+    out2: *mut i32,
+) -> i32 {
+    if capacity.is_null() || charge.is_null() || out2.is_null() {
+        return ERR;
+    }
+    guard(ERR, || {
+        let cap = std::slice::from_raw_parts(capacity, len);
+        let ch = std::slice::from_raw_parts_mut(charge, len);
+        let (rest, dem) = fill_sequential(supply, cap, ch);
+        *out2 = rest;
+        *out2.add(1) = dem;
+        0
+    })
+}
+
 #[no_mangle]
 pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nativeengine_RustNativeEngine_nativeSumSaturating(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     values: JIntArray,
 ) -> jint {
-    let Ok(length) = env.get_array_length(&values) else {
-        return 0;
-    };
-    if length == 0 {
-        return 0;
-    }
-
-    let mut buffer = vec![0; length as usize];
-    if env.get_int_array_region(&values, 0, &mut buffer).is_err() {
-        return 0;
-    }
-    sum_saturating(&buffer)
+    jni_sum(&mut env, &values)
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_drakescraft_suites_core_nativeengine_NativeEngineBridge_nativeSumSaturating(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     values: JIntArray,
 ) -> jint {
-    let Ok(length) = env.get_array_length(&values) else {
-        return 0;
-    };
-    if length == 0 {
-        return 0;
-    }
-
-    let mut buffer = vec![0; length as usize];
-    if env.get_int_array_region(&values, 0, &mut buffer).is_err() {
-        return 0;
-    }
-    sum_saturating(&buffer)
+    jni_sum(&mut env, &values)
 }
 
 #[no_mangle]
@@ -234,10 +340,6 @@ pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nat
     )
 }
 
-fn sum_saturating(values: &[i32]) -> i32 {
-    values.iter().copied().fold(0_i32, i32::saturating_add)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn calculate_market_price(
     base_price: f64,
@@ -271,7 +373,7 @@ pub extern "C" fn slimefun_free_string(s: *mut c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_market_price, sum_saturating};
+    use super::{calculate_market_price, guard, slimefun_fill_sequential, sum_saturating, ERR};
 
     #[test]
     fn sums_regular_values() {
@@ -305,5 +407,21 @@ mod tests {
             ),
             185.0
         );
+    }
+
+    #[test]
+    fn un_panic_no_cruza_la_frontera() {
+        assert_eq!(guard(ERR, || -> i32 { panic!("prueba") }), ERR);
+    }
+
+    #[test]
+    fn c_abi_fill_sequential_y_punteros_nulos() {
+        let cap = [100, 100];
+        let mut ch = [0, 100];
+        let mut out = [0, 0];
+        let r = unsafe { slimefun_fill_sequential(30, cap.as_ptr(), ch.as_mut_ptr(), 2, out.as_mut_ptr()) };
+        assert_eq!((r, ch, out), (0, [30, 100], [0, 100]));
+        let r = unsafe { slimefun_fill_sequential(1, std::ptr::null(), ch.as_mut_ptr(), 2, out.as_mut_ptr()) };
+        assert_eq!(r, ERR);
     }
 }

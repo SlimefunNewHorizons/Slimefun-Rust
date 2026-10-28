@@ -167,6 +167,58 @@ impl EnergyNetGraphSolver {
     }
 }
 
+/// Reparto por lotes sobre arrays planos (SoA), equivalente exacto del bucle de consumidores de
+/// `EnergyNet.tick` en Java: recorre en orden, rellena cada consumidor con hueco y acumula la
+/// demanda con suma saturante en `i32` (igual que `NumberUtils.flowSafeAddition`).
+///
+/// Escribe la carga resultante en `charge` y devuelve `(energia_restante, demanda)`.
+/// Sin asignaciones: trabaja sobre los buffers del llamante.
+pub fn fill_sequential(supply: i32, capacity: &[i32], charge: &mut [i32]) -> (i32, i32) {
+    let mut remaining = supply;
+    let mut demand = 0_i32;
+    for (cap, cur) in capacity.iter().zip(charge.iter_mut()) {
+        if *cur < *cap {
+            let space = *cap - *cur;
+            demand = demand.saturating_add(space);
+            if remaining > 0 {
+                if remaining > space {
+                    *cur = *cap;
+                    remaining -= space;
+                } else {
+                    *cur += remaining;
+                    remaining = 0;
+                }
+            }
+        }
+    }
+    (remaining, demand)
+}
+
+/// Equivalente de `EnergyNet.storeRemainingEnergy` para un grupo: el sobrante llena en orden y
+/// el resto queda en 0. Devuelve lo que no cupo.
+pub fn store_remaining(remaining: i32, capacity: &[i32], out: &mut [i32]) -> i32 {
+    let mut left = remaining;
+    for (cap, o) in capacity.iter().zip(out.iter_mut()) {
+        if left > 0 {
+            if left > *cap {
+                *o = *cap;
+                left -= *cap;
+            } else {
+                *o = left;
+                left = 0;
+            }
+        } else {
+            *o = 0;
+        }
+    }
+    left
+}
+
+/// Suma `i32` con saturacion, igual que `EnergyNet` en Java.
+pub fn sum_saturating(values: &[i32]) -> i32 {
+    values.iter().copied().fold(0_i32, i32::saturating_add)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,5 +388,38 @@ mod tests {
         let r = s.solve_tick();
         assert_eq!(r.demanded, 0);
         assert_eq!(r.wasted, 100, "sin capacitores el sobrante se pierde");
+    }
+
+    #[test]
+    fn fill_sequential_rellena_en_orden_y_suma_demanda() {
+        let cap = [100, 100, 100];
+        let mut ch = [90, 0, 100];
+        let (rest, dem) = fill_sequential(50, &cap, &mut ch);
+        assert_eq!(ch, [100, 40, 100]);
+        assert_eq!(rest, 0);
+        assert_eq!(dem, 10 + 100);
+    }
+
+    #[test]
+    fn fill_sequential_satura_la_demanda() {
+        let cap = [i32::MAX, i32::MAX];
+        let mut ch = [0, 0];
+        let (rest, dem) = fill_sequential(0, &cap, &mut ch);
+        assert_eq!((rest, dem), (0, i32::MAX));
+    }
+
+    #[test]
+    fn fill_sequential_ignora_cargas_sobre_capacidad() {
+        let mut ch = [80];
+        assert_eq!(fill_sequential(50, &[10], &mut ch), (50, 0));
+        assert_eq!(ch, [80]);
+    }
+
+    #[test]
+    fn store_remaining_llena_y_pone_a_cero() {
+        let mut out = [9, 9, 9];
+        assert_eq!(store_remaining(150, &[100, 100, 100], &mut out), 0);
+        assert_eq!(out, [100, 50, 0]);
+        assert_eq!(store_remaining(500, &[100, 100], &mut out[..2]), 300);
     }
 }

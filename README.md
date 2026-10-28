@@ -227,3 +227,6 @@ cargo build --release --workspace
 Copyright © 2026 [**JackStar6677-1**](https://github.com/JackStar6677-1) · [**DrakesCraft Labs**](https://github.com/SlimefunNewHorizons). All Rights Reserved.
 
 This software is **Source-Available** for public inspection and technical audit. Redistribution, commercial repackaging, or unauthorized derivative distribution without explicit written permission from the author is strictly prohibited.
+
+## Status and benchmarks (2026-10-28)
+ABI 2 adds panic-safe batch entry points (`fill_sequential`, `store_remaining`, zero-copy JNI critical arrays) and a C ABI `slimefun_abi_version`. Reproducible benchmark: `bench/run.sh`. Measured result: JNI calls do not beat plain Java for these workloads, so the native path is not enabled by default. See `docs/RUST_NATIVO.md`.
