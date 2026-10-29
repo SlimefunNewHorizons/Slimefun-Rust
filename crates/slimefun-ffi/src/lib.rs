@@ -256,6 +256,51 @@ pub unsafe extern "C" fn slimefun_fill_sequential(
     })
 }
 
+/// Variante C ABI (Panama) de `storeRemainingEnergy`: rellena `out` en orden con el sobrante y deja
+/// el resto en 0. Devuelve lo que no cupo, o `ERR` si falla. Mismos codigos que la variante JNI.
+/// Anadido sin subir la ABI (solo agrega simbolos; quien no los busca no se entera).
+///
+/// # Safety
+/// `capacity` y `out` deben apuntar a `len` i32 validos (`out` escribible).
+#[no_mangle]
+pub unsafe extern "C" fn slimefun_store_remaining(
+    remaining: i32,
+    capacity: *const i32,
+    out: *mut i32,
+    len: usize,
+) -> i32 {
+    if capacity.is_null() || out.is_null() {
+        return ERR;
+    }
+    guard(ERR, || {
+        let cap = std::slice::from_raw_parts(capacity, len);
+        let o = std::slice::from_raw_parts_mut(out, len);
+        store_remaining(remaining, cap, o)
+    })
+}
+
+/// Variante C ABI (Panama) del precio de mercado. Misma formula que la JNI; NaN si falla.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn slimefun_market_price(
+    base_price: f64,
+    demand: i64,
+    total_wealth: f64,
+    reference_wealth: f64,
+    minimum_factor: f64,
+    maximum_factor: f64,
+    demand_step: f64,
+    maximum_demand_factor: f64,
+    pulse_factor: f64,
+) -> f64 {
+    guard(f64::NAN, || {
+        calculate_market_price(
+            base_price, demand, total_wealth, reference_wealth, minimum_factor,
+            maximum_factor, demand_step, maximum_demand_factor, pulse_factor,
+        )
+    })
+}
+
 #[no_mangle]
 pub extern "system" fn Java_io_github_thebusybiscuit_slimefun4_core_services_nativeengine_RustNativeEngine_nativeSumSaturating(
     mut env: JNIEnv,
@@ -423,5 +468,17 @@ mod tests {
         assert_eq!((r, ch, out), (0, [30, 100], [0, 100]));
         let r = unsafe { slimefun_fill_sequential(1, std::ptr::null(), ch.as_mut_ptr(), 2, out.as_mut_ptr()) };
         assert_eq!(r, ERR);
+    }
+
+    #[test]
+    fn c_abi_store_remaining_y_precio() {
+        let cap = [100, 100, 100];
+        let mut out = [9, 9, 9];
+        let left = unsafe { super::slimefun_store_remaining(150, cap.as_ptr(), out.as_mut_ptr(), 3) };
+        assert_eq!((left, out), (0, [100, 50, 0]));
+        let nulo = unsafe { super::slimefun_store_remaining(1, std::ptr::null(), out.as_mut_ptr(), 3) };
+        assert_eq!(nulo, ERR);
+        let p = super::slimefun_market_price(100.0, 0, 0.0, 100_000_000.0, 0.85, 1.85, 0.02, 1.45, 1.0);
+        assert_eq!(p, 90.0);
     }
 }
