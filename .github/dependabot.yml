@@ -1,0 +1,5 @@
+# SlimefunNewHorizons: Dependabot Configuration
+# Version updates are disabled to prevent uncoordinated library bumps across 200+ addons.
+# Security alerts and vulnerability monitoring remain active via GitHub Security Advisories.
+version: 2
+updates: []
